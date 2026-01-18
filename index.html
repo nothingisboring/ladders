@@ -1,37 +1,43 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>LADDERS | Daily Ranking Game</title>
+    <title>LADDERS | Daily Ranking</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        /* NYT-INSPIRED "LADDERS" THEME */
-        :root { --correct: #6aaa64; --wrong: #ce3a3a; --border: #e2e2e2; --text: #000; }
-        body { font-family: 'nyt-franklin', arial, sans-serif; background: #fff; color: var(--text); display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        :root { --correct: #6aaa64; --wrong: #ce3a3a; --border: #e2e2e2; --text: #000; --bg: #fff; }
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
         
         header { width: 100%; max-width: 500px; border-bottom: 1px solid var(--border); padding: 10px 0; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
-        .logo { font-weight: 800; font-size: 24px; letter-spacing: -1px; }
-        .stats { font-size: 12px; font-weight: bold; text-transform: uppercase; }
+        .logo { font-weight: 800; font-size: 24px; letter-spacing: -1.5px; }
+        .stats-container { display: flex; gap: 20px; text-align: center; }
+        .stat-item { font-size: 10px; font-weight: 800; color: #888; line-height: 1.2; }
+        .stat-item span { font-size: 16px; color: #000; }
 
-        .theme-box { text-align: center; margin-bottom: 25px; }
+        .theme-box { text-align: center; margin-bottom: 25px; max-width: 400px; }
         .theme-box h2 { margin: 0; font-size: 18px; text-transform: uppercase; letter-spacing: 1px; }
-        .theme-box p { margin: 5px 0; color: #666; font-size: 14px; }
+        .peek-status { font-size: 12px; margin-top: 5px; color: #666; font-weight: bold; }
 
         #sortable-list { list-style: none; padding: 0; width: 100%; max-width: 450px; border-top: 1px solid var(--border); }
         .item { 
-            display: flex; align-items: center; padding: 15px 10px; background: #fff; 
+            display: flex; align-items: center; padding: 14px 12px; background: #fff; 
             border-bottom: 1px solid var(--border); position: relative; cursor: grab; user-select: none;
+            overflow: hidden;
         }
         .item.dragging { background: #f9f9f9; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
         
-        .data-bar { position: absolute; left: 0; top: 0; bottom: 0; width: 0%; background: #f0f0f0; transition: width 1s ease-out; z-index: 1; }
+        .color-bar { position: absolute; left: 0; top: 0; bottom: 0; width: 0%; transition: width 0.4s ease-out; z-index: 1; opacity: 0; }
+        .item.peeked .color-bar, .item.solved .color-bar { width: 100%; opacity: 1; }
+        
         .text-container { position: relative; z-index: 2; display: flex; width: 100%; align-items: center; }
-        .name { font-weight: 500; }
-        .val-hint { margin-left: auto; font-size: 12px; color: #888; visibility: hidden; }
+        .name { font-weight: 500; font-size: 14px; }
+        .peek-btn { margin-left: auto; background: #000; color: #fff; border: none; padding: 4px 10px; font-size: 10px; font-weight: bold; border-radius: 4px; cursor: pointer; }
+        
+        .val-hint { margin-left: auto; font-size: 11px; font-weight: bold; display: none; background: rgba(0,0,0,0.8); color: #fff; padding: 2px 6px; border-radius: 3px; }
 
         .controls { margin-top: 30px; display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 450px; }
-        button { padding: 16px; border-radius: 30px; border: none; font-weight: bold; cursor: pointer; font-size: 16px; transition: 0.2s; }
+        button.action-btn { padding: 16px; border-radius: 30px; border: none; font-weight: bold; cursor: pointer; font-size: 16px; }
         #submitBtn { background: #000; color: #fff; }
-        #submitBtn:disabled { background: var(--border); color: #999; }
+        #masterBtn { background: #fff; color: #000; border: 2px solid #000; display: none; }
         #shareBtn { background: var(--correct); color: #fff; display: none; }
     </style>
 </head>
@@ -39,121 +45,152 @@
 
     <header>
         <div class="logo">LADDERS</div>
-        <div class="stats" id="date-display">JAN 18, 2026</div>
+        <div class="stats-container">
+            <div class="stat-item"><span id="streak-count">0</span><br>STREAK</div>
+            <div class="stat-item"><span id="date-display">JAN 18</span><br>2026</div>
+        </div>
     </header>
 
     <div class="theme-box">
         <h2 id="puzzle-title">LOADING...</h2>
-        <p id="puzzle-desc">Drag to rank from least to most.</p>
+        <div class="peek-status">PEEKS LEFT: <span id="peeks-left">3</span></div>
     </div>
 
     <ul id="sortable-list"></ul>
 
     <div class="controls">
-        <button id="submitBtn" onclick="checkLadders()">SUBMIT RANKING</button>
-        <button id="shareBtn" onclick="copyShareText()">SHARE RESULTS</button>
+        <button id="submitBtn" class="action-btn" onclick="checkLadders()">SUBMIT RANKING</button>
+        <button id="masterBtn" class="action-btn" onclick="showMaster()">VIEW CORRECT SOLUTION</button>
+        <button id="shareBtn" class="action-btn" onclick="copyShareText()">SHARE RESULTS</button>
     </div>
 
     <script>
-      // THE LADDERS VAULT
-// Launch Date: Jan 18, 2026
-const vault = [
-     { 
-        title: "Red Spectrum", 
-        desc: "Lightest ➔ Darkest", 
-        items: [
-            {n: "Misty Rose", r: 1, v: 10}, {n: "Salmon", r: 2, v: 20}, {n: "Coral", r: 3, v: 30}, {n: "Tomato Red", r: 4, v: 40}, {n: "Vermilion", r: 5, v: 50}, {n: "Crimson", r: 6, v: 65}, {n: "Fire Brick", r: 7, v: 75}, {n: "Ruby", r: 8, v: 85}, {n: "Maroon", r: 9, v: 95}, {n: "Oxblood", r: 10, v: 100}
-        ]
-    },
-       { 
-        title: "Cinema Scale", 
-        desc: "Fewest Extras ➔ Most Extras", 
-        items: [
-            {n: "12 Angry Men", r: 1, v: 5, h: "0"}, {n: "Rocky", r: 2, v: 12, h: "100"}, {n: "Braveheart", r: 3, v: 20, h: "1.6k"}, {n: "Gladiator", r: 4, v: 30, h: "2k"}, {n: "Lord of the Rings", r: 5, v: 45, h: "20k"}, {n: "Ben-Hur (1959)", r: 6, v: 60, h: "50k"}, {n: "Ten Commandments", r: 7, v: 75, h: "68k"}, {n: "Around World 80 Days", r: 8, v: 85, h: "68.8k"}, {n: "War and Peace (1966)", r: 9, v: 95, h: "120k"}, {n: "Gandhi", r: 10, v: 100, h: "300k"}
-        ]
-    },
-    { 
-        title: "Hues of Blue", 
-        desc: "Lightest ➔ Darkest", 
-        items: [
-            {n: "Alice Blue", r: 1, v: 10, h: "#F0F8FF"}, {n: "Sky Blue", r: 2, v: 20, h: "#87CEEB"}, {n: "Baby Blue", r: 3, v: 30, h: "#89CFF0"}, {n: "Cornflower", r: 4, v: 40, h: "#6495ED"}, {n: "Steel Blue", r: 5, v: 50, h: "#4682B4"}, {n: "Cobalt", r: 6, v: 65, h: "#0047AB"}, {n: "Royal Blue", r: 7, v: 75, h: "#4169E1"}, {n: "Sapphire", r: 8, v: 85, h: "#0F52BA"}, {n: "Navy Blue", r: 9, v: 95, h: "#000080"}, {n: "Midnight Blue", r: 10, v: 100, h: "#191970"}
-        ]
-    },
-    { 
-        title: "The 'The' Count", 
-        desc: "Fewest 'the's ➔ Most", 
-        items: [
-            {n: "Old Man & Sea", r: 1, v: 5, h: "1.2k"}, {n: "Gatsby", r: 2, v: 15, h: "3.2k"}, {n: "Alice in Wonderland", r: 3, v: 25, h: "3.4k"}, {n: "Tale of Two Cities", r: 4, v: 35, h: "7.5k"}, {n: "Moby Dick", r: 5, v: 45, h: "14k"}, {n: "Ulysses", r: 6, v: 55, h: "15k"}, {n: "Fellowship of Ring", r: 7, v: 65, h: "16.5k"}, {n: "War and Peace", r: 8, v: 80, h: "35k"}, {n: "Les Misérables", r: 9, v: 90, h: "38k"}, {n: "Search of Lost Time", r: 10, v: 100, h: "120k+"}
-        ]
-    },
-    { 
-        title: "Victorian Bestsellers", 
-        desc: "Fewest Career Sales ➔ Most", 
-        items: [
-            {n: "Elizabeth Gaskell", r: 1, v: 10}, {n: "George Eliot", r: 2, v: 20}, {n: "Anthony Trollope", r: 3, v: 30}, {n: "Thomas Hardy", r: 4, v: 40}, {n: "The Brontës", r: 5, v: 50}, {n: "H.G. Wells", r: 6, v: 60}, {n: "R.L. Stevenson", r: 7, v: 70}, {n: "Charles Dickens", r: 8, v: 80}, {n: "Lewis Carroll", r: 9, v: 90}, {n: "Conan Doyle", r: 10, v: 100}
-        ]
-    },
-    { 
-        title: "Scrabble Points", 
-        desc: "Lowest Base Score ➔ Highest", 
-        items: [
-            {n: "Etiquette", r: 1, v: 10, h: "18 pts"}, {n: "Oxyptila", r: 2, v: 20, h: "19 pts"}, {n: "Bezique", r: 3, v: 30, h: "26 pts"}, {n: "Juxtapose", r: 4, v: 40, h: "27 pts"}, {n: "Caziques", r: 5, v: 50, h: "28 pts"}, {n: "Muzjiks", r: 6, v: 60, h: "29 pts"}, {n: "Oxazepam", r: 7, v: 70, h: "29 pts"}, {n: "Hydroxybenzene", r: 8, v: 80, h: "30 pts"}, {n: "Quizzical", r: 9, v: 90, h: "38 pts"}, {n: "Oxyphenbutazone", r: 10, v: 100, h: "41 pts"}
-        ]
-    },
-    { 
-        title: "Metal Density", 
-        desc: "Least Dense ➔ Most Dense", 
-        items: [
-            {n: "Lithium", r: 1, v: 5, h: "0.53g/cm³"}, {n: "Magnesium", r: 2, v: 12, h: "1.74g/cm³"}, {n: "Aluminum", r: 3, v: 20, h: "2.70g/cm³"}, {n: "Titanium", r: 4, v: 30, h: "4.54g/cm³"}, {n: "Zinc", r: 5, v: 45, h: "7.14g/cm³"}, {n: "Iron", r: 6, v: 55, h: "7.87g/cm³"}, {n: "Lead", r: 7, v: 75, h: "11.3g/cm³"}, {n: "Mercury", r: 8, v: 85, h: "13.5g/cm³"}, {n: "Gold", r: 9, v: 95, h: "19.3g/cm³"}, {n: "Osmium", r: 10, v: 100, h: "22.6g/cm³"}
-        ]
-    },
-    { 
-        title: "Symphony Duration", 
-        desc: "Shortest ➔ Longest Average Time", 
-        items: [
-            {n: "Mozart: No. 1", r: 1, v: 10, h: "11m"}, {n: "Beethoven: No. 5", r: 2, v: 25, h: "33m"}, {n: "Mozart: No. 41", r: 3, v: 32, h: "38m"}, {n: "Brahms: No. 4", r: 4, v: 40, h: "42m"}, {n: "Beethoven: No. 9", r: 5, v: 60, h: "70m"}, {n: "Mahler: No. 5", r: 6, v: 65, h: "72m"}, {n: "Bruckner: No. 8", r: 7, v: 75, h: "85m"}, {n: "Mahler: No. 2", r: 8, v: 80, h: "90m"}, {n: "Mahler: No. 3", r: 9, v: 90, h: "100m"}, {n: "Brian: The Gothic", r: 10, v: 100, h: "115m"}
-        ]
-    },
-    { 
-        title: "States of Matter", 
-        desc: "Lowest Energy ➔ Highest Energy", 
-        items: [
-            {n: "Bose-Einstein Condensate", r: 1, v: 10}, {n: "Solid", r: 2, v: 25}, {n: "Amorphous Solid", r: 3, v: 35}, {n: "Liquid", r: 4, v: 50}, {n: "Gas", r: 5, v: 65}, {n: "Plasma", r: 6, v: 80}, {n: "Quark-Gluon Plasma", r: 7, v: 100}
-        ]
-    },
-    { 
-        title: "Hues of Green", 
-        desc: "Lightest ➔ Darkest", 
-        items: [
-            {n: "Mint", r: 1, v: 10, h: "#F5FFFA"}, {n: "Pistachio", r: 2, v: 20, h: "#93C572"}, {n: "Lime", r: 3, v: 30, h: "#32CD32"}, {n: "Kelly Green", r: 4, v: 40, h: "#4CBB17"}, {n: "Pear", r: 5, v: 50, h: "#D1E231"}, {n: "Sea Green", r: 6, v: 65, h: "#2E8B57"}, {n: "Olive", r: 7, v: 75, h: "#808000"}, {n: "Emerald", r: 8, v: 85, h: "#50C878"}, {n: "Forest Green", r: 9, v: 95, h: "#228B22"}, {n: "British Racing Green", r: 10, v: 100, h: "#004225"}
-        ]
-    }
-];
+        const vault = [
+            { title: "Scrabble Base Points", type: "text", items: [
+                {n: "Etiquette", r: 1, h: "18"}, {n: "Oxyptila", r: 2, h: "19"}, {n: "Bezique", r: 3, h: "26"}, 
+                {n: "Zinkify", r: 4, h: "26"}, {n: "Juxtapose", r: 5, h: "27"}, {n: "Caziques", r: 6, h: "28"}, 
+                {n: "Muzjiks", r: 7, h: "29"}, {n: "Oxazepam", r: 8, h: "29"}, {n: "Hydroxybenzene", r: 9, h: "30"}, {n: "Quizzical", r: 10, h: "38"}
+            ]},
+            { title: "Macbeth Chronology", type: "text", items: [
+                {n: "Three Witches Meet", r: 1, h: "I.i"}, {n: "Execution of Cawdor", r: 2, h: "I.iv"}, {n: "Lady Macbeth's Letter", r: 3, h: "I.v"}, 
+                {n: "The Floating Dagger", r: 4, h: "II.i"}, {n: "The King is Found", r: 5, h: "II.iii"}, {n: "Banquo's Ghost Appears", r: 6, h: "III.iv"}, 
+                {n: "The Second Prophecies", r: 7, h: "IV.i"}, {n: "Sleepwalking Scene", r: 8, h: "V.i"}, {n: "Tomorrow and Tomorrow", r: 9, h: "V.v"}, {n: "Macduff's Victory", r: 10, h: "V.viii"}
+            ]},
+            { title: "Red Spectrum", type: "color", items: [
+                {n: "Misty Rose", r: 1, c: "#FFE4E1"}, {n: "Salmon", r: 2, c: "#FA8072"}, {n: "Coral", r: 3, c: "#FF7F50"}, 
+                {n: "Tomato", r: 4, c: "#FF6347"}, {n: "Candy Apple", r: 5, c: "#FF0800"}, {n: "Ruby", r: 6, c: "#E0115F"}, 
+                {n: "Firebrick", r: 7, c: "#B22222"}, {n: "Dark Red", r: 8, c: "#8B0000"}, {n: "Maroon", r: 9, c: "#800000"}, {n: "Oxblood", r: 10, c: "#4A0404"}
+            ]},
+            { title: "Blue Spectrum", type: "color", items: [
+                {n: "Alice Blue", r: 1, c: "#F0F8FF"}, {n: "Sky Blue", r: 2, c: "#87CEEB"}, {n: "Baby Blue", r: 3, c: "#89CFF0"}, 
+                {n: "Cornflower", r: 4, c: "#6495ED"}, {n: "Steel Blue", r: 5, c: "#4682B4"}, {n: "Cobalt", r: 6, c: "#0047AB"}, 
+                {n: "Royal Blue", r: 7, c: "#4169E1"}, {n: "Sapphire", r: 8, c: "#0F52BA"}, {n: "Navy Blue", r: 9, c: "#000080"}, {n: "Midnight Blue", r: 10, c: "#191970"}
+            ]},
+            { title: "Orchestral Scale (Instruments)", type: "text", items: [
+                {n: "Mozart: Sym. No. 1", r: 1, h: "~15"}, {n: "Haydn: Sym. No. 94", r: 2, h: "~30"}, {n: "Beethoven: Sym. No. 5", r: 3, h: "~45"}, 
+                {n: "Brahms: Sym. No. 4", r: 4, h: "~55"}, {n: "Tchaikovsky: Sym. No. 6", r: 5, h: "~70"}, {n: "Stravinsky: Rite of Spring", r: 6, h: "~90"}, 
+                {n: "Mahler: Sym. No. 5", r: 7, h: "~100"}, {n: "Strauss: Alpine Sym.", r: 8, h: "125+"}, {n: "Baverstock: Sym. No. 1", r: 9, h: "200+"}, {n: "Mahler: Sym. No. 8", r: 10, h: "1000+"}
+            ]},
+            { title: "Military History (Victories)", type: "text", items: [
+                {n: "Israel", r: 1, h: "~30"}, {n: "Egypt", r: 2, h: "~60"}, {n: "Prussia/Germany", r: 3, h: "~110"}, 
+                {n: "Russia", r: 4, h: "~130"}, {n: "USA", r: 5, h: "~145"}, {n: "Rome", r: 6, h: "~160"}, 
+                {n: "China", r: 7, h: "~170"}, {n: "Austria", r: 8, h: "~175"}, {n: "UK", r: 9, h: "~230"}, {n: "France", r: 10, h: "1,100+"}
+            ]},
+            { title: "Victorian Book Sales", type: "text", items: [
+                {n: "Elizabeth Gaskell", r: 1, h: "Lower"}, {n: "George Eliot", r: 2, h: "Mid-Low"}, {n: "Anthony Trollope", r: 3, h: "Mid-Low"}, 
+                {n: "The Brontës", r: 4, h: "Mid"}, {n: "Thomas Hardy", r: 5, h: "Mid"}, {n: "Lewis Carroll", r: 6, h: "High"}, 
+                {n: "H.G. Wells", r: 7, h: "High"}, {n: "R.L. Stevenson", r: 8, h: "V. High"}, {n: "Charles Dickens", r: 9, h: "Iconic"}, {n: "Conan Doyle", r: 10, h: "Elite"}
+            ]}
+        ];
 
-        // ENGINE
+        let peeks = 3;
         const launchDate = new Date("2026-01-18");
-        const today = new Date();
-        const diffDays = Math.floor((today - launchDate) / (1000 * 60 * 60 * 24));
-        const activePuzzle = vault[diffDays % vault.length];
+        const diffDays = Math.floor((new Date() - launchDate) / 86400000);
+        const active = vault[diffDays % vault.length];
 
         function init() {
-            document.getElementById('puzzle-title').innerText = activePuzzle.title;
+            document.getElementById('puzzle-title').innerText = active.title;
+            document.getElementById('streak-count').innerText = localStorage.getItem('ladders_streak') || 0;
             const list = document.getElementById('sortable-list');
-            const shuffled = [...activePuzzle.items].sort(() => Math.random() - 0.5);
-            shuffled.forEach(item => {
-                list.innerHTML += `<li class="item" draggable="true" data-rank="${item.r}" data-val="${item.v}">
-                    <div class="data-bar"></div>
-                    <div class="text-container"><span class="name">${item.n}</span><span class="val-hint">${item.h || ''}</span></div>
+            [...active.items].sort(() => Math.random() - 0.5).forEach(item => {
+                const colorHtml = active.type === 'color' ? `<div class="color-bar" style="background:${item.c}"></div>` : '';
+                list.innerHTML += `<li class="item" draggable="true" data-rank="${item.r}">
+                    ${colorHtml}
+                    <div class="text-container">
+                        <span class="name">${item.n}</span>
+                        <span class="val-hint">${item.h || ''}</span>
+                        <button class="peek-btn" onclick="doPeek(this)">PEEK</button>
+                    </div>
                 </li>`;
             });
             setupDraggables();
+        }
+
+        function doPeek(btn) {
+            if (peeks > 0) {
+                const item = btn.closest('.item');
+                item.classList.add('peeked');
+                if (active.type === 'text') item.querySelector('.val-hint').style.display = 'block';
+                peeks--;
+                document.getElementById('peeks-left').innerText = peeks;
+                btn.style.display = 'none';
+                setTimeout(() => {
+                    if (!document.getElementById('submitBtn').disabled) {
+                        item.classList.remove('peeked');
+                        if (active.type === 'text') item.querySelector('.val-hint').style.display = 'none';
+                        btn.style.display = 'block';
+                    }
+                }, 1500);
+            }
+        }
+
+        function checkLadders() {
+            const items = [...document.querySelectorAll('.item')];
+            let score = 0;
+            items.forEach((item, i) => {
+                item.classList.add('solved');
+                const correct = item.dataset.rank == (i + 1);
+                if (correct) score++;
+                item.style.borderLeft = `12px solid ${correct ? '#6aaa64' : '#ce3a3a'}`;
+                item.querySelector('.val-hint').style.display = 'block';
+                item.querySelector('.peek-btn').style.display = 'none';
+                item.draggable = false;
+            });
+            document.getElementById('submitBtn').style.display = 'none';
+            document.getElementById('masterBtn').style.display = 'block';
+            document.getElementById('shareBtn').style.display = 'block';
+            window.finalScore = `${score}/${active.items.length}`;
+            updateStreak(score === active.items.length);
+        }
+
+        function showMaster() {
+            const list = document.getElementById('sortable-list');
+            const items = [...document.querySelectorAll('.item')].sort((a,b) => a.dataset.rank - b.dataset.rank);
+            list.innerHTML = '';
+            items.forEach(i => list.appendChild(i));
+        }
+
+        function updateStreak(win) {
+            let streak = parseInt(localStorage.getItem('ladders_streak')) || 0;
+            const today = new Date().toISOString().split('T')[0];
+            if (localStorage.getItem('ladders_last') !== today) {
+                streak = win ? streak + 1 : 0;
+                localStorage.setItem('ladders_streak', streak);
+                localStorage.setItem('ladders_last', today);
+                document.getElementById('streak-count').innerText = streak;
+            }
+        }
+
+        function copyShareText() {
+            const text = `LADDERS #${diffDays + 1}\nScore: ${window.finalScore}\nStreak: ${localStorage.getItem('ladders_streak')} 🔥\nhttps://your-github-link.io`;
+            navigator.clipboard.writeText(text);
+            alert("Results copied to clipboard!");
         }
 
         function setupDraggables() {
             const list = document.getElementById('sortable-list');
             let dragItem = null;
             list.addEventListener('dragstart', (e) => { dragItem = e.target; e.target.classList.add('dragging'); });
-            list.addEventListener('dragend', (e) => { e.target.classList.remove('dragging'); });
             list.addEventListener('dragover', (e) => {
                 e.preventDefault();
                 const afterElement = [...list.querySelectorAll('.item:not(.dragging)')].reduce((closest, child) => {
@@ -161,33 +198,10 @@ const vault = [
                     const offset = e.clientY - box.top - box.height / 2;
                     return (offset < 0 && offset > closest.offset) ? { offset: offset, element: child } : closest;
                 }, { offset: Number.NEGATIVE_INFINITY }).element;
-                if (afterElement == null) list.appendChild(dragItem);
-                else list.insertBefore(dragItem, afterElement);
+                if (afterElement == null) list.appendChild(dragItem); else list.insertBefore(dragItem, afterElement);
             });
+            list.addEventListener('dragend', (e) => e.target.classList.remove('dragging'));
         }
-
-        function checkLadders() {
-            const items = [...document.querySelectorAll('.item')];
-            let correctCount = 0;
-            items.forEach((item, idx) => {
-                const isCorrect = item.dataset.rank == (idx + 1);
-                if (isCorrect) correctCount++;
-                item.querySelector('.data-bar').style.width = item.dataset.val + '%';
-                item.style.borderLeft = isCorrect ? '8px solid var(--correct)' : '8px solid var(--wrong)';
-                item.querySelector('.val-hint').style.visibility = 'visible';
-                item.draggable = false;
-            });
-            document.getElementById('submitBtn').style.display = 'none';
-            document.getElementById('shareBtn').style.display = 'block';
-            window.finalScore = `${correctCount}/10`;
-        }
-
-        function copyShareText() {
-            const text = `LADDERS Puzzle #${diffDays + 1}\nScore: ${window.finalScore}\nhttps://yourname.github.io/ladders`;
-            navigator.clipboard.writeText(text);
-            alert("Results copied to clipboard!");
-        }
-
         init();
     </script>
 </body>
